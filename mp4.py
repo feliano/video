@@ -21,6 +21,7 @@ TRAF = b'traf'
 TFDT = b'tfdt'
 TREX = b'trex'
 TKHD = b'tkhd'
+MDIA = b'mdia'
 MDHD = b'mdhd'
 TFHD = b'tfhd'
 TRUN = b'trun'
@@ -99,6 +100,24 @@ class Box:
         return lang_str
 
 
+class ContainerBox(Box):
+    def __init__(self, size, data):
+        super().__init__(size, data)
+        self.find_contained_boxes()
+
+    def find_contained_boxes(self):
+        while self.index + 8 < self.size:
+            box_size = uint(self.data[self.index:self.index + 4])
+            box_type = self.data[self.index + 4:self.index + 8]
+            box_data = self.data[self.index + 8:self.index + box_size]
+            BoxParser(box_size, box_type, box_data)
+            # TODO: add box to some data structure keeping track of boxes
+            self.index += box_size
+
+    def print_box_tree(self):
+        raise NotImplementedError  # TODO
+
+
 class FullBox(Box):
     def __init__(self, size, data):
         super().__init__(size, data)
@@ -106,15 +125,9 @@ class FullBox(Box):
         self.flags = self.read_bytes(3)
 
 
-class Moov(Box):
+class Moov(ContainerBox):
     def __init__(self, size, data):
         super().__init__(size, data)
-        while self.index < size:
-            box_size = uint(data[self.index:self.index + 4])
-            box_type = data[self.index + 4:self.index + 8]
-            box_data = data[self.index + 8:self.index + box_size]
-            BoxParser(box_size, box_type, box_data)
-            self.index += box_size + 8
 
 
 class Mvhd(FullBox):
@@ -252,10 +265,19 @@ class Unwn(Box):
         super().__init__(size, data)
 
 
-class Trak(Box):
+class Mdia(ContainerBox):
     def __init__(self, size, data):
         super().__init__(size, data)
-        # TODO
+
+
+class Hdlr(Box):
+    def __init__(self, size, data):
+        super().__init__(size, data)
+
+
+class Trak(ContainerBox):
+    def __init__(self, size, data):
+        super().__init__(size, data)
 
 
 class Saio(FullBox):
@@ -293,15 +315,9 @@ class Sbgp(FullBox):
         # TODO
 
 
-class Traf(Box):
+class Traf(ContainerBox):
     def __init__(self, size, data):
         super().__init__(size, data)
-        print(len(data))
-        while self.index + 8 < size:
-            box_size = self.read_uint(4)
-            box_type = self.read_bytes(4)
-            box_data = self.read_bytes(box_size - 8)
-            BoxParser(box_size, box_type, box_data)
 
 
 class Pssh(FullBox):
@@ -323,16 +339,9 @@ class Pssh(FullBox):
             # TODO
 
 
-class Moof(Box):
+class Moof(ContainerBox):
     def __init__(self, size, data):
         super().__init__(size, data)
-        self.size = size
-        self.data = data
-        while self.index + 8 < size:
-            box_size = self.read_uint(4)
-            box_type = self.read_bytes(4)
-            box_data = self.read_bytes(box_size - 8)
-            BoxParser(box_size, box_type, box_data)
 
 
 class Mfhd(FullBox):
@@ -345,7 +354,7 @@ class Mfhd(FullBox):
 class Mdat(Box):
     def __init__(self, size, data):
         super().__init__(size, data)
-        # print(f'mdat size: {self.size}')
+        print(f'mdat size: {self.size}')
         # TODO
 
 
@@ -394,6 +403,7 @@ class BoxParser:
         TREX: Trex,
         TRAK: Trak,
         TKHD: Tkhd,
+        MDIA: Mdia,
         MDHD: Mdhd,
         MOOF: Moof,
         MFHD: Mfhd,
@@ -415,7 +425,7 @@ class BoxParser:
 
 
 def main():
-    with open('video_segment.mp4', 'rb') as f:
+    with open('aws_segment.mp4', 'rb') as f:
         data = f.read()
 
     class Root(Box):
