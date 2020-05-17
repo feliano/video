@@ -52,12 +52,12 @@ def mac_timestamp_to_human(timestamp):
     ).strftime('%Y-%m-%d %H:%M:%S')
 
 
-def uint(bytestring):
-    return int.from_bytes(bytestring, 'big', signed=False)
+def uint(bytestring, endianess='big'):
+    return int.from_bytes(bytestring, endianess, signed=False)
 
 
-def signed_int(bytestring):
-    return int.from_bytes(bytestring, 'big', signed=True)
+def signed_int(bytestring, endianess='big'):
+    return int.from_bytes(bytestring, endianess, signed=True)
 
 
 class Box:
@@ -71,13 +71,13 @@ class Box:
     def __str__(self):
         return self.__class__.__name__
 
-    def read_uint(self, length):
+    def read_uint(self, length, endianess='big'):
         u = uint(self.data[self.index:self.index + length])
         self.index += length
         return u
 
-    def read_signed_int(self, length):
-        i = signed_int(self.data[self.index:self.index + length])
+    def read_signed_int(self, length, endianess='big'):
+        i = signed_int(self.data[self.index:self.index + length], endianess)
         self.index += length
         return i
 
@@ -103,9 +103,9 @@ class Box:
 class ContainerBox(Box):
     def __init__(self, size, data):
         super().__init__(size, data)
-        self.find_contained_boxes()
+        self.get_children()
 
-    def find_contained_boxes(self):
+    def get_children(self):
         while self.index + 8 < self.size:
             box_size = uint(self.data[self.index:self.index + 4])
             box_type = self.data[self.index + 4:self.index + 8]
@@ -325,6 +325,25 @@ class Pssh(FullBox):
         super().__init__(size, data)
         self.system_id = self.read_bytes(16)
         print(SYSTEM_IDS.get(self.system_id, 'Unknown System ID'))
+        # if widevine
+        if SYSTEM_IDS.get(self.system_id) == 'WIDEVINE':
+            self.parse_widevine_pssh_data()
+        # elif playready
+        elif SYSTEM_IDS.get(self.system_id) == 'PLAYREADY':
+            self.parse_playready_pssh_data()
+        else:
+            # TODO
+            self.parse_widevine_pssh_data()
+
+    def parse_playready_pssh_data(self):
+        # Little-Endian
+        self.data_size = self.read_uint(4)
+        self.pssh_data = self.read_bytes(self.data_size)
+        count = self.read_signed_int(2, 'little')
+        print(self.pssh_data)
+
+
+    def parse_widevine_pssh_data(self):
         if self.version == 0:
             self.data_size = self.read_uint(4)
             self.pssh_data = self.read_bytes(self.data_size)
@@ -425,7 +444,9 @@ class BoxParser:
 
 
 def main():
-    with open('aws_segment.mp4', 'rb') as f:
+    import sys
+    # with open('aws_segment.mp4', 'rb') as f:
+    with open(sys.argv[1], 'rb') as f:
         data = f.read()
 
     class Root(Box):
